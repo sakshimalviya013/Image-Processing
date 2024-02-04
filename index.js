@@ -12,7 +12,10 @@ async function imageProcess() {
             const worker = await createWorker('eng');
             (async () => {
                 const { data: { text } } = await worker.recognize(img);
-                extractOutputFromImageData(text);
+
+                const answers = extractAns(text);
+                console.log({ answers });
+
                 await worker.terminate();
             })();
 
@@ -21,38 +24,35 @@ async function imageProcess() {
         }
     }
 }
-// Function to dynamically extract keys from input text
-function extractKeys(text) {
-    const keyRegex = /\b(\d+\s?\.?\s?[\w\s?]+)\?/g; // Add 'g' flag for global matching
-    const matches = text.matchAll(keyRegex);
-    return Array.from(matches, match => match[1]);
-}
 
-// Function to extract information using regular expressions
-function extractInfo(text, keys) {
-    const patterns = keys.map(key => ({
-        key,
-        regex: new RegExp(`${key}\\s?.+?([A-Za-z0-9\\s\\[\\]_]+)`)
-    }));
+function extractAns(extractedText) {
+    const lines = extractedText.split('\n');
+    let currentQuestionNumber = null;
 
-    const extractedData = {};
+    const mcqAnswers = lines.reduce((answers, line) => {
+        const questionMatch = line.match(/^\d+\./); // Matches lines starting with a number followed by a dot
+        if (questionMatch) {
+            currentQuestionNumber = questionMatch[0].slice(0, -1); // Extracting the question number
+        }
 
-    patterns.forEach(({ key, regex }) => {
-        const match = text.match(regex);
-        extractedData[key] = match ? match[1].trim() : 'Not Found';
-    });
+        const indexOfUnkn = line.indexOf('Unkn');
+        const indexOfYes = line.indexOf('Yes');
+        const indexOfNo = line.indexOf('No');
 
-    return extractedData;
-}
+        if (indexOfUnkn !== -1 && currentQuestionNumber !== null) {
+            if ((indexOfUnkn < indexOfYes || indexOfYes === -1) && (indexOfUnkn < indexOfNo || indexOfNo === -1)) {
+                answers[currentQuestionNumber] = 'Undetermined';
+            } else if (indexOfUnkn < indexOfYes || indexOfYes === -1) {
+                answers[currentQuestionNumber] = 'Yes';
+            } else if (indexOfUnkn < indexOfNo || indexOfNo === -1) {
+                answers[currentQuestionNumber] = 'No';
+            }
+        }
 
-// Function to extract output from image data
-function extractOutputFromImageData(inputText) {
-    // Extract keys dynamically
-    const keys = extractKeys(inputText);
+        return answers;
+    }, {});
 
-    // Output the extracted data
-    const extractedData = extractInfo(inputText, keys);
-    console.log('Extracted Data:', extractedData);
+    return mcqAnswers;
 }
 
 await imageProcess();
